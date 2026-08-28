@@ -30,6 +30,7 @@ class IdeaListViewModel {
     }
     
     func addIdea(_ text: String) {
+        guard !isDuplicate(text) else { return }
         ideas.append(text)
         saveDraft()
     }
@@ -42,8 +43,25 @@ class IdeaListViewModel {
     
     func updateIdea(at index: Int, with text: String) {
         guard index < ideas.count else { return }
+        guard !isDuplicate(text, excludingIndex: index) else { return }
         ideas[index] = text
         saveDraft()
+    }
+
+    func normalized(_ text: String) -> String {
+        text
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .lowercased()
+    }
+
+    func isDuplicate(_ text: String, excludingIndex ignored: Int? = nil) -> Bool {
+        let normalizedText = normalized(text)
+        guard !normalizedText.isEmpty else { return false }
+
+        return ideas.enumerated().contains { index, idea in
+            index != ignored && normalized(idea) == normalizedText
+        }
     }
     
     func saveDraft() {
