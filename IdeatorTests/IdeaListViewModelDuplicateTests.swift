@@ -8,10 +8,10 @@ final class IdeaListViewModelDuplicateTests: XCTestCase {
     private var prompt: Prompt {
         let suffix = UUID().uuidString.prefix(8)
         return Prompt(
-            text: "Duplicate test prompt (suffix)",
+            text: "Duplicate test prompt \(suffix)",
             category: .creative,
             suggestedCount: 3,
-            slug: "duplicate-test-prompt-(suffix)"
+            slug: "duplicate-test-prompt-\(suffix)"
         )
     }
 
@@ -75,6 +75,7 @@ final class IdeaListViewModelDuplicateTests: XCTestCase {
     func testCheckIfComplete_requiresDistinctIdeas() {
         vm.addIdea("First idea")
         vm.addIdea(" first   idea ")
+        vm.addIdea("FIRST IDEA")
 
         XCTAssertFalse(vm.checkIfComplete())
     }
