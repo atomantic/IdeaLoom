@@ -65,6 +65,23 @@ final class IdeaListViewModelDuplicateTests: XCTestCase {
         XCTAssertTrue(vm.isDuplicate("Second idea", excludingIndex: 0))
     }
 
+    func testUpdateIdea_blocksDuplicateOfAnotherRow() {
+        vm.addIdea("First idea")
+        vm.addIdea("Second idea")
+
+        vm.updateIdea(at: 0, with: "second   IDEA")
+
+        XCTAssertEqual(vm.ideas, ["First idea", "Second idea"])
+    }
+
+    func testUpdateIdea_allowsRecasingOwnRow() {
+        vm.addIdea("First idea")
+
+        vm.updateIdea(at: 0, with: "FIRST IDEA")
+
+        XCTAssertEqual(vm.ideas, ["FIRST IDEA"])
+    }
+
     func testAddIdea_appendsNonDuplicate() {
         vm.addIdea("First idea")
         vm.addIdea("Second idea")

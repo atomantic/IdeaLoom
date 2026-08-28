@@ -108,10 +108,10 @@ struct IdeaInputView: View {
                                         },
                                         onUpdate: { newText in
                                             guard !viewModel.isDuplicate(newText, excludingIndex: index) else {
-                                                triggerDuplicateHint()
-                                                return
+                                                return false
                                             }
                                             viewModel.updateIdea(at: index, with: newText)
+                                            return true
                                         }
                                     )
                                     .transition(.asymmetric(
@@ -227,10 +227,10 @@ struct IdeaInputView: View {
                         duplicateShakeOffset = -4
                     }
                     try await Task.sleep(for: .milliseconds(80))
-                    withAnimation(.easeInOut(duration: 0.16).repeatCount(2, autoreverses: true)) {
+                    withAnimation(.easeInOut(duration: 0.16).repeatCount(3, autoreverses: true)) {
                         duplicateShakeOffset = 4
                     }
-                    try await Task.sleep(for: .milliseconds(500))
+                    try await Task.sleep(for: .milliseconds(480))
                     withAnimation(.easeOut(duration: 0.1)) {
                         duplicateShakeOffset = 0
                     }
@@ -272,6 +272,7 @@ struct IdeaInputView: View {
     private func triggerDuplicateHint() {
         showDuplicateHint = true
         duplicateHintGeneration += 1
+        AccessibilityNotification.Announcement("Already on your list").post()
     }
     
     private var progressHeader: some View {
@@ -355,10 +356,11 @@ struct IdeaRow: View {
     let index: Int
     let text: String
     let onDelete: () -> Void
-    var onUpdate: ((String) -> Void)? = nil
+    var onUpdate: ((String) -> Bool)? = nil
 
     @State private var isEditing = false
     @State private var editText = ""
+    @State private var showDuplicateHint = false
     @FocusState private var isEditFocused: Bool
 
     var body: some View {
@@ -370,22 +372,37 @@ struct IdeaRow: View {
                 .padding(.top, 8)
 
             if isEditing {
-                TextField("", text: $editText)
-                    .font(.body)
-                    .focused($isEditFocused)
-                    .onSubmit { commitEdit() }
-                    .submitLabel(.done)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .padding(12)
-                    .background(Color(UIColor.systemBackground))
-                    .cornerRadius(Theme.Radius.inset)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.Radius.inset)
-                            .stroke(Color.blue, lineWidth: 2)
-                    )
-                    .onChange(of: isEditFocused) { _, focused in
-                        if !focused { commitEdit() }
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("", text: $editText)
+                        .font(.body)
+                        .focused($isEditFocused)
+                        .onSubmit { commitEdit() }
+                        .submitLabel(.done)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .padding(12)
+                        .background(Color(UIColor.systemBackground))
+                        .cornerRadius(Theme.Radius.inset)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Radius.inset)
+                                .stroke(Color.blue, lineWidth: 2)
+                        )
+                        .onChange(of: editText) { _, _ in
+                            showDuplicateHint = false
+                        }
+                        .onChange(of: isEditFocused) { _, focused in
+                            if !focused { commitEdit() }
+                        }
+
+                    if showDuplicateHint {
+                        Text("Already on your list")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .padding(.leading, 12)
+                            .accessibilityAddTraits(.isStaticText)
                     }
+                }
+                    }
+                }
             } else {
                 Text(text)
                     .font(.body)
@@ -420,7 +437,12 @@ struct IdeaRow: View {
     private func commitEdit() {
         let trimmed = editText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty && trimmed != text {
-            onUpdate?(trimmed)
+            guard onUpdate?(trimmed) ?? true else {
+                showDuplicateHint = true
+                isEditFocused = true
+                AccessibilityNotification.Announcement("Already on your list").post()
+                return
+            }
         }
         isEditing = false
     }
