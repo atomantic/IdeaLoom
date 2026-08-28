@@ -29,10 +29,12 @@ class IdeaListViewModel {
         isComplete = false
     }
     
-    func addIdea(_ text: String) {
-        guard !isDuplicate(text) else { return }
+    @discardableResult
+    func addIdea(_ text: String) -> Bool {
+        guard !isDuplicate(text) else { return false }
         ideas.append(text)
         saveDraft()
+        return true
     }
     
     func removeIdea(at index: Int) {
@@ -41,11 +43,13 @@ class IdeaListViewModel {
         saveDraft()
     }
     
-    func updateIdea(at index: Int, with text: String) {
-        guard index < ideas.count else { return }
-        guard !isDuplicate(text, excludingIndex: index) else { return }
+    @discardableResult
+    func updateIdea(at index: Int, with text: String) -> Bool {
+        guard index < ideas.count else { return true }
+        guard !isDuplicate(text, excludingIndex: index) else { return false }
         ideas[index] = text
         saveDraft()
+        return true
     }
 
     func normalized(_ text: String) -> String {
