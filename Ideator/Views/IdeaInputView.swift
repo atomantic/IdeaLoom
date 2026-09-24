@@ -70,7 +70,7 @@ struct IdeaInputView: View {
                                 .background(Color(UIColor.systemBackground))
                                 .cornerRadius(8)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
+                                    RoundedRectangle(cornerRadius: Theme.Radius.inset)
                                         .stroke(
                                             isInputFocused ? Color.blue : Color(UIColor.separator),
                                             lineWidth: isInputFocused ? 2 : 1
@@ -91,7 +91,6 @@ struct IdeaInputView: View {
                                 .font(.caption)
                                 .foregroundColor(.orange)
                                 .padding(.leading, 12)
-                        }
                         }
                     }
                     .padding(.horizontal)
@@ -385,11 +384,12 @@ struct IdeaRow: View {
                             RoundedRectangle(cornerRadius: Theme.Radius.inset)
                                 .stroke(Color.blue, lineWidth: 2)
                         )
+                        .onChange(of: editText) { _, _ in
+                            showDuplicateHint = false
+                        }
                         .onChange(of: isEditFocused) { _, focused in
                             if !focused { commitEdit() }
                         }
-                }
-                    }
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
@@ -408,8 +408,6 @@ struct IdeaRow: View {
 
                     if showDuplicateHint {
                         duplicateHint
-                    }
-                }
                     }
                 }
             }
