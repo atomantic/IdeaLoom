@@ -68,7 +68,7 @@ struct IdeaInputView: View {
                                 .textFieldStyle(PlainTextFieldStyle())
                                 .padding(12)
                                 .background(Color(UIColor.systemBackground))
-                                .cornerRadius(8)
+                                .cornerRadius(Theme.Radius.inset)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: Theme.Radius.inset)
                                         .stroke(
