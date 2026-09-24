@@ -11,6 +11,9 @@ struct IdeaInputView: View {
     @State private var showingSkipAlert = false
     @State private var currentHelpTip = "Enter an idea..."
     @State private var helpTimerActive = false
+    @State private var showDuplicateHint = false
+    @State private var duplicateHintGeneration = 0
+    @State private var duplicateShakeOffset: CGFloat = 0
     
     private let helpTips = [
         "Get silly with it!",
@@ -40,45 +43,58 @@ struct IdeaInputView: View {
                         .padding(.horizontal)
                     
                     // Single input field at the top
-                    HStack(spacing: 12) {
-                        TextField(currentHelpTip, text: $currentInput)
-                            .font(.body)
-                            .focused($isInputFocused)
-                            .onSubmit {
-                                addIdea()
-                            }
-                            .onChange(of: currentInput) { _, _ in
-                                resetHelpTimer()
-                            }
-                            .onChange(of: isInputFocused) { _, focused in
-                                if focused {
-                                    helpTimerActive = true
-                                } else {
-                                    helpTimerActive = false
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 12) {
+                            TextField(currentHelpTip, text: $currentInput)
+                                .font(.body)
+                                .focused($isInputFocused)
+                                .onSubmit {
+                                    addIdea()
                                 }
+                                .onChange(of: currentInput) { _, _ in
+                                    showDuplicateHint = false
+                                    duplicateHintGeneration = 0
+                                    duplicateShakeOffset = 0
+                                    resetHelpTimer()
+                                }
+                                .onChange(of: isInputFocused) { _, focused in
+                                    if focused {
+                                        helpTimerActive = true
+                                    } else {
+                                        helpTimerActive = false
+                                    }
+                                }
+                                .submitLabel(.done)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .padding(12)
+                                .background(Color(UIColor.systemBackground))
+                                .cornerRadius(Theme.Radius.inset)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: Theme.Radius.inset)
+                                        .stroke(
+                                            isInputFocused ? Color.blue : Color(UIColor.separator),
+                                            lineWidth: isInputFocused ? 2 : 1
+                                        )
+                                )
+
+                            Button(action: addIdea) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.blue)
                             }
-                            .submitLabel(.done)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .padding(12)
-                            .background(Color(UIColor.systemBackground))
-                            .cornerRadius(Theme.Radius.inset)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: Theme.Radius.inset)
-                                    .stroke(
-                                        isInputFocused ? Color.blue : Color(UIColor.separator),
-                                        lineWidth: isInputFocused ? 2 : 1
-                                    )
-                            )
-                        
-                        Button(action: addIdea) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title2)
-                                .foregroundColor(.blue)
+                            .accessibilityLabel("Add idea")
+                            .disabled(currentInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
-                        .accessibilityLabel("Add idea")
-                        .disabled(currentInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                        if showDuplicateHint {
+                            Text("Already on your list")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                                .padding(.leading, 12)
+                        }
                     }
                     .padding(.horizontal)
+                    .offset(x: duplicateShakeOffset)
                     
                     // List of added ideas below
                     ScrollView {
@@ -172,6 +188,9 @@ struct IdeaInputView: View {
         .onAppear {
             isInputFocused = true
             helpTimerActive = true
+            showDuplicateHint = false
+            duplicateHintGeneration = 0
+            duplicateShakeOffset = 0
         }
         .onDisappear {
             helpTimerActive = false
@@ -195,6 +214,32 @@ struct IdeaInputView: View {
                 // Task cancelled — expected on disappear or timer reset
             }
         }
+        .task(id: duplicateHintGeneration) {
+            guard duplicateHintGeneration > 0 else { return }
+
+            do {
+                if reduceMotion {
+                    duplicateShakeOffset = 0
+                } else {
+                    withAnimation(.easeInOut(duration: 0.08)) {
+                        duplicateShakeOffset = -4
+                    }
+                    try await Task.sleep(for: .milliseconds(80))
+                    withAnimation(.easeInOut(duration: 0.16).repeatCount(3, autoreverses: true)) {
+                        duplicateShakeOffset = 4
+                    }
+                    try await Task.sleep(for: .milliseconds(480))
+                    withAnimation(.easeOut(duration: 0.1)) {
+                        duplicateShakeOffset = 0
+                    }
+                }
+
+                try await Task.sleep(for: .seconds(reduceMotion ? 2.0 : 1.5))
+                showDuplicateHint = false
+            } catch {
+                // Task cancelled by a new duplicate attempt or view disappearance.
+            }
+        }
         .alert("Skip This Prompt?", isPresented: $showingSkipAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Skip", role: .destructive) {
@@ -208,13 +253,23 @@ struct IdeaInputView: View {
     private func addIdea() {
         let trimmedInput = currentInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedInput.isEmpty else { return }
-        
-        withAnimation(reduceMotion ? .none : .spring(response: 0.3, dampingFraction: 0.8)) {
+
+        let didAdd = withAnimation(reduceMotion ? .none : .spring(response: 0.3, dampingFraction: 0.8)) {
             viewModel.addIdea(trimmedInput)
+        }
+        guard didAdd else {
+            triggerDuplicateHint()
+            return
         }
         
         currentInput = ""
         isInputFocused = true
+    }
+
+    private func triggerDuplicateHint() {
+        showDuplicateHint = true
+        duplicateHintGeneration += 1
+        AccessibilityNotification.Announcement("Already on your list").post()
     }
     
     private var progressHeader: some View {
@@ -298,10 +353,12 @@ struct IdeaRow: View {
     let index: Int
     let text: String
     let onDelete: () -> Void
-    var onUpdate: ((String) -> Void)? = nil
+    var onUpdate: ((String) -> Bool)? = nil
 
     @State private var isEditing = false
     @State private var editText = ""
+    @State private var showDuplicateHint = false
+    @State private var duplicateHintGeneration = 0
     @FocusState private var isEditFocused: Bool
 
     var body: some View {
@@ -313,34 +370,46 @@ struct IdeaRow: View {
                 .padding(.top, 8)
 
             if isEditing {
-                TextField("", text: $editText)
-                    .font(.body)
-                    .focused($isEditFocused)
-                    .onSubmit { commitEdit() }
-                    .submitLabel(.done)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .padding(12)
-                    .background(Color(UIColor.systemBackground))
-                    .cornerRadius(Theme.Radius.inset)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.Radius.inset)
-                            .stroke(Color.blue, lineWidth: 2)
-                    )
-                    .onChange(of: isEditFocused) { _, focused in
-                        if !focused { commitEdit() }
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("", text: $editText)
+                        .font(.body)
+                        .focused($isEditFocused)
+                        .onSubmit { commitEdit() }
+                        .submitLabel(.done)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .padding(12)
+                        .background(Color(UIColor.systemBackground))
+                        .cornerRadius(Theme.Radius.inset)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Radius.inset)
+                                .stroke(Color.blue, lineWidth: 2)
+                        )
+                        .onChange(of: editText) { _, _ in
+                            showDuplicateHint = false
+                        }
+                        .onChange(of: isEditFocused) { _, focused in
+                            if !focused { commitEdit() }
+                        }
+                }
             } else {
-                Text(text)
-                    .font(.body)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(Theme.Surface.card)
-                    .cornerRadius(Theme.Radius.inset)
-                    .onTapGesture {
-                        editText = text
-                        isEditing = true
-                        isEditFocused = true
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(text)
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Theme.Surface.card)
+                        .cornerRadius(Theme.Radius.inset)
+                        .onTapGesture {
+                            editText = text
+                            showDuplicateHint = false
+                            isEditing = true
+                            isEditFocused = true
+                        }
+
+                    if showDuplicateHint {
+                        duplicateHint
                     }
+                }
             }
 
             Button(action: onDelete) {
@@ -358,14 +427,38 @@ struct IdeaRow: View {
                 Label("Delete", systemImage: "trash")
             }
         }
+        .task(id: duplicateHintGeneration) {
+            guard duplicateHintGeneration > 0 else { return }
+
+            do {
+                try await Task.sleep(for: .seconds(2))
+                showDuplicateHint = false
+            } catch {
+                // Task cancelled by a new edit or row disappearance.
+            }
+        }
     }
 
     private func commitEdit() {
         let trimmed = editText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty && trimmed != text {
-            onUpdate?(trimmed)
+            guard onUpdate?(trimmed) ?? true else {
+                editText = text
+                showDuplicateHint = true
+                duplicateHintGeneration += 1
+                isEditing = false
+                AccessibilityNotification.Announcement("Already on your list").post()
+                return
+            }
         }
         isEditing = false
+    }
+
+    private var duplicateHint: some View {
+        Text("Already on your list")
+            .font(.caption)
+            .foregroundColor(.orange)
+            .padding(.leading, 12)
     }
 }
 
